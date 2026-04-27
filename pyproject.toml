@@ -21,10 +21,13 @@ dependencies = [
     "wandb>=0.16.0",
     "rich>=13.0.0",
     "pyserial>=3.5",         # FSR 串口通信
+    "pyzmq>=26.0",           # 跨进程通信（替代 ROS2）
+    "opencv-python>=4.9.0",  # 摄像头读取
+    "sounddevice>=0.4.6",    # 麦克风读取
+    "smbus2>=0.4.3",         # IMU I2C 通信
 ]
 
 [project.optional-dependencies]
-ros = ["rclpy"]
 deploy = ["onnx>=1.16.0", "onnxruntime-gpu>=1.18.0"]
 dev = ["pytest>=8.0", "ruff>=0.4.0", "mypy>=1.9.0"]
 

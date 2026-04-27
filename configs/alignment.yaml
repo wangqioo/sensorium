@@ -1,0 +1,27 @@
+seed: 42
+
+# Stage 1 编码器 checkpoint 路径（训练完后填入）
+visual_ckpt:  checkpoints/visual/best.ckpt
+imu_ckpt:     checkpoints/imu/best.ckpt
+tactile_ckpt: checkpoints/tactile/best.ckpt
+
+data:
+  data_dir: data/aligned/   # 需要同步多模态录制数据
+  val_ratio: 0.1
+  batch_size: 64
+  num_workers: 4
+
+model:
+  latent_dim: 384
+  img_size: 224
+  tac_weight: 0.5           # 触觉对比损失权重（相对于视觉/IMU对齐损失）
+
+optimizer:
+  lr: 5e-5                  # 对齐阶段用小学习率，避免破坏 Stage 1 结果
+  weight_decay: 1e-4
+
+trainer:
+  max_epochs: 30
+  accelerator: auto
+  devices: 1
+  precision: "16-mixed"

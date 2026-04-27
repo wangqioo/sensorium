@@ -1,0 +1,21 @@
+# Step A 或 B 或 AB（先A后B）
+step: AB
+
+model_path: Qwen/Qwen2.5-7B-Instruct   # 或本地路径
+
+data_path: data/multimodal_sequences.jsonl
+max_length: 2048
+
+step_a:
+  epochs: 3
+  batch_size: 8
+  grad_accum: 4            # 等效 batch_size = 32
+  lr: 5e-4                 # 只训练 embedding，可以较大
+
+step_b:
+  epochs: 3
+  batch_size: 2
+  grad_accum: 16           # 等效 batch_size = 32
+  lr: 2e-4
+  lora_rank: 64
+  lora_alpha: 128

@@ -1,0 +1,25 @@
+seed: 42
+use_wandb: false
+
+data:
+  data_dir: data/video_recordings/
+  frame_skip: 3        # 每 3 帧取 1 帧（30fps → 10fps）
+  val_ratio: 0.1
+  batch_size: 128
+  num_workers: 4
+
+model:
+  codebook_size: 1024
+  latent_dim: 384      # 与 DINOv2-small CLS token 维度一致
+  img_size: 224
+  commitment_cost: 0.25
+
+optimizer:
+  lr: 1e-3             # 只训练头部，可以用较大学习率
+  weight_decay: 1e-4
+
+trainer:
+  max_epochs: 50
+  accelerator: auto
+  devices: 1
+  precision: "16-mixed"

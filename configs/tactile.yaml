@@ -1,0 +1,28 @@
+seed: 42
+use_wandb: false
+
+data:
+  data_dir: data/tactile_recordings/
+  window_frames: 50   # 100Hz × 0.5s
+  stride_frames: 25   # 50% 重叠
+  val_ratio: 0.1
+  batch_size: 64      # 触觉数据更大，batch 小一些
+  num_workers: 4
+
+model:
+  codebook_size: 256
+  latent_dim: 256
+  map_h: 10           # 身体地图高度（行）
+  map_w: 8            # 身体地图宽度（列）
+  window_frames: 50
+  commitment_cost: 0.25
+
+optimizer:
+  lr: 1e-4
+  weight_decay: 1e-4
+
+trainer:
+  max_epochs: 150
+  accelerator: auto
+  devices: 1
+  precision: "16-mixed"

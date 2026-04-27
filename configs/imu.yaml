@@ -1,0 +1,25 @@
+seed: 42
+use_wandb: false
+
+data:
+  data_dir: data/imu_recordings/
+  stride: 25          # 滑动步长（50% 重叠）
+  val_ratio: 0.1
+  batch_size: 256
+  num_workers: 4
+
+model:
+  codebook_size: 256
+  latent_dim: 256
+  window_size: 50     # 100Hz × 0.5s
+  commitment_cost: 0.25
+
+optimizer:
+  lr: 3e-4
+  weight_decay: 1e-4
+
+trainer:
+  max_epochs: 100
+  accelerator: auto   # cpu / gpu / mps
+  devices: 1
+  precision: "16-mixed"

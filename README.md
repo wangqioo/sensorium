@@ -212,13 +212,65 @@ PyTorch → ONNX → TensorRT INT8 引擎 → ONNX Runtime（TensorRT 后端）
 
 ## 实施路线图
 
-| 阶段 | 周期 | 交付物 |
+### 已完成（代码框架）
+
+| 模块 | 文件 | 状态 |
 |---|---|---|
-| **Phase 0** 数据采集基础设施 | 2 周 | ROS2 传感器节点、FSR 阵列串口桥接、多路时间戳同步录制 |
-| **Phase 1** 原子编码器训练 | 3 周 | 四模态 VQ 模型、码本质量评估通过 |
-| **Phase 2** 跨模态对齐 | 2 周 | ImageBind 锚点对齐完成、触觉对比对齐完成 |
-| **Phase 3** LLM 多模态微调 | 4 周 | Qwen2.5-7B 扩展感官词汇、场景理解评估 |
-| **Phase 4** 边缘部署与反射层 | 3 周 | TensorRT INT8 全部就绪、端到端延迟验证、实机测试 |
+| VQ 量化器 | `sensorium/core/quantizer.py` | ✅ |
+| 训练损失函数 | `sensorium/core/losses.py` | ✅ |
+| 视觉编码器 | `sensorium/encoders/visual.py` | ✅ |
+| 听觉编码器 | `sensorium/encoders/audio.py` | ✅ |
+| IMU 编码器 | `sensorium/encoders/imu.py` | ✅ |
+| 触觉编码器 | `sensorium/encoders/tactile.py` | ✅ |
+| 摄像头驱动 | `sensorium/drivers/camera.py` | ✅ |
+| 麦克风驱动 | `sensorium/drivers/microphone.py` | ✅ |
+| IMU 驱动 | `sensorium/drivers/imu.py` | ✅ |
+| FSR 触觉驱动 | `sensorium/drivers/tactile.py` | ✅ |
+| 反射引擎 | `sensorium/reflex/engine.py` | ✅ |
+| 主运行时管道 | `sensorium/pipeline/runtime.py` | ✅ |
+| LLM 词汇表扩展 | `sensorium/llm/vocab.py` | ✅ |
+| LLM 上下文窗口 | `sensorium/llm/context.py` | ✅ |
+| LLM 推理进程 | `sensorium/llm/process.py` | ✅ |
+| 视觉训练脚本 | `train/train_visual.py` | ✅ |
+| IMU 训练脚本 | `train/train_imu.py` | ✅ |
+| 触觉训练脚本 | `train/train_tactile.py` | ✅ |
+| 跨模态对齐训练 | `train/train_alignment.py` | ✅ |
+| LLM 微调脚本 | `train/train_llm.py` | ✅ |
+| 同步录制工具 | `data/collector/record.py` | ✅ |
+| 训练语料生成 | `data/preprocessor/build_dataset.py` | ✅ |
+| Arduino FSR 固件 | `hardware/tactile_array/tactile_array.ino` | ✅ |
+| 码本检查工具 | `tools/inspect_codebook.py` | ✅ |
+| TensorRT 导出 | `deploy/jetson/export.py` | ✅ |
+
+### 待办（按优先级）
+
+#### 阶段一：硬件就位（当前阻塞点）
+
+- [ ] 采购 FSR 传感器（约 80 个）、Arduino Mega、分压电阻
+- [ ] 焊接 / 布线 FSR 阵列，按 `hardware/tactile_array/` 接线
+- [ ] 刷入 Arduino 固件，验证串口帧格式
+- [ ] 测试每路传感器驱动（摄像头 / 麦克风 / IMU / 触觉逐一验通）
+
+#### 阶段二：数据采集 + Stage 1 训练
+
+- [ ] 运行 `data/collector/record.py` 累计录制数据（目标：每模态 50 小时以上）
+- [ ] 运行 `build_dataset.py --mode stage1` 生成训练数据
+- [ ] 训练 IMU 编码器，验证码本利用率 > 80%
+- [ ] 训练触觉编码器，验证码本利用率 > 80%
+- [ ] 训练视觉编码器
+- [ ] 运行 `inspect_codebook.py`，填入反射引擎的 `atom_id`
+- [ ] **里程碑**：反射层跑通，被摸头 → 触发动作，听到声音 → 转头
+
+#### 阶段三：对齐 + LLM + 部署
+
+- [ ] 运行 `build_dataset.py --mode stage2` 生成对齐数据
+- [ ] 训练跨模态对齐（Stage 2）
+- [ ] 用 Whisper ASR 生成 LLM 训练语料
+- [ ] LLM 微调 Step A（Embedding 对齐）
+- [ ] LLM 微调 Step B（LoRA 全量微调）
+- [ ] 在 Jetson Orin 上运行 `deploy/jetson/export.py` 导出 TensorRT INT8
+- [ ] 端到端联调：`run.py` + `run_llm.py` 同时启动
+- [ ] **里程碑**：系统理解"用户在被摸头时说了什么"并作出上下文相关的回应
 
 ---
 
@@ -228,40 +280,77 @@ PyTorch → ONNX → TensorRT INT8 引擎 → ONNX Runtime（TensorRT 后端）
 |---|---|---|
 | 视觉骨干 | [DINOv2](https://github.com/facebookresearch/dinov2) | 冻结使用 |
 | 视觉量化 | [VQGAN-pytorch](https://github.com/dome272/VQGAN-pytorch) | 只训练头部 |
-| 听觉 Token 化 | [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) | 直接使用 |
-| 跨模态锚点 | [ImageBind](https://github.com/facebookresearch/ImageBind) | 对齐信号 |
+| 听觉 Token 化 | [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) | 直接使用，ICLR 2025 |
+| 跨模态锚点 | [ImageBind](https://github.com/facebookresearch/ImageBind) | Stage 2 对齐信号 |
 | 触觉架构参考 | [Sparsh](https://github.com/facebookresearch/sparsh) | Meta，ICLR 2025 |
 | IMU 架构参考 | [IMU-Video-MAE](https://github.com/mf-zhang/IMU-Video-MAE) | ECCV 2024 |
-| LLM 微调 | [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) | LoRA 训练 |
+| LLM 微调 | [PEFT](https://github.com/huggingface/peft) | LoRA 训练 |
 | LLM 推理 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | INT4 边缘推理 |
-| 机器人中间件 | ROS 2 + Isaac ROS | 传感器集成 |
+| ASR | [Whisper](https://github.com/openai/whisper) | 语料生成用 |
+| 进程通信 | [ZeroMQ](https://zeromq.org/) | 替代 ROS2，轻量级跨进程 |
 
 ---
 
-## 仓库结构（规划中）
+## 仓库结构
 
 ```
 sensorium/
-├── docs/                    # 架构文档与论文笔记
-├── hardware/                # FSR 阵列原理图、CAD、接线指南
+├── hardware/
 │   └── tactile_array/
-├── data/                    # 数据采集与预处理
-│   ├── collector/           # ROS2 传感器节点
-│   └── preprocessor/        # 时间同步、格式转换
-├── encoders/                # 第一阶段：原子编码器模型
-│   ├── visual/              # DINOv2 + VQ-GAN
-│   ├── audio/               # WavTokenizer 封装
-│   ├── imu/                 # 六轴 IMU VQ-VAE
-│   └── tactile/             # 时空 VQ-VAE
-├── alignment/               # 第二阶段：跨模态对齐
-│   └── imagebind_anchor/
-├── llm/                     # 第三阶段：多模态 LLM
-│   ├── tokenizer_extension/ # 词汇表扩展
-│   ├── training/            # LLaMA-Factory 配置
-│   └── inference/           # llama.cpp 集成
-├── reflex/                  # 第二层：反射引擎
-└── deploy/                  # 边缘部署（TensorRT、ONNX）
-    └── jetson/
+│       └── tactile_array.ino     # Arduino FSR 阵列固件
+│
+├── data/
+│   ├── collector/
+│   │   └── record.py             # 多模态同步录制工具
+│   └── preprocessor/
+│       └── build_dataset.py      # Stage 1/2/3 训练数据生成
+│
+├── sensorium/                    # 核心 Python 包
+│   ├── core/
+│   │   ├── quantizer.py          # VQ 量化器（EMA + 死码重置）
+│   │   └── losses.py             # 重建 / 时序预测 / 跨模态对齐损失
+│   ├── encoders/
+│   │   ├── visual.py             # DINOv2 + VQ-GAN
+│   │   ├── audio.py              # WavTokenizer 封装
+│   │   ├── imu.py                # 六轴 IMU VQ-VAE
+│   │   └── tactile.py            # 时空压力图 VQ-VAE
+│   ├── drivers/
+│   │   ├── camera.py             # OpenCV 摄像头（独立线程）
+│   │   ├── microphone.py         # sounddevice 麦克风
+│   │   ├── imu.py                # I2C IMU（smbus2）
+│   │   └── tactile.py            # Arduino 串口 FSR 阵列
+│   ├── reflex/
+│   │   └── engine.py             # 反射规则引擎（<50ms）
+│   ├── pipeline/
+│   │   └── runtime.py            # asyncio 主运行时 + ZMQ
+│   └── llm/
+│       ├── vocab.py              # LLM 感官词汇表扩展
+│       ├── context.py            # 滚动上下文窗口
+│       └── process.py            # LLM 独立推理进程
+│
+├── train/
+│   ├── train_visual.py           # Stage 1：视觉编码器
+│   ├── train_imu.py              # Stage 1：IMU 编码器
+│   ├── train_tactile.py          # Stage 1：触觉编码器
+│   ├── train_alignment.py        # Stage 2：跨模态对齐
+│   └── train_llm.py              # Stage 3：LLM 微调（Step A + B）
+│
+├── configs/
+│   ├── visual.yaml
+│   ├── imu.yaml
+│   ├── tactile.yaml
+│   ├── alignment.yaml
+│   └── llm.yaml
+│
+├── tools/
+│   └── inspect_codebook.py       # 码本检查工具（填写反射规则用）
+│
+├── deploy/
+│   └── jetson/
+│       └── export.py             # ONNX → TensorRT INT8 导出
+│
+├── run.py                        # 主感知进程入口
+└── run_llm.py                    # LLM 推理进程入口
 ```
 
 ---
@@ -274,6 +363,34 @@ sensorium/
 
 ---
 
+## 快速开始
+
+```bash
+# 安装依赖
+pip install -e ".[dev]"
+
+# 录制数据
+python data/collector/record.py --duration 3600
+
+# Stage 1 训练（三路独立，可并行）
+python train/train_imu.py      data_dir=data/processed/imu_recordings/
+python train/train_tactile.py  data_dir=data/processed/tactile_recordings/
+python train/train_visual.py   data_dir=data/processed/video_recordings/
+
+# 检查码本，填写反射规则
+python tools/inspect_codebook.py --encoder imu     --checkpoint checkpoints/imu/best.ckpt     --mode interactive
+python tools/inspect_codebook.py --encoder tactile --checkpoint checkpoints/tactile/best.ckpt --mode interactive
+
+# Stage 2 + Stage 3
+python train/train_alignment.py
+python train/train_llm.py step=AB model_path=Qwen/Qwen2.5-7B-Instruct
+
+# 运行系统（两个终端）
+python run.py     --imu-checkpoint checkpoints/imu/best.ckpt --tactile-checkpoint checkpoints/tactile/best.ckpt
+python run_llm.py --model models/qwen2.5-7b-q4_k_m.gguf --backend llama_cpp
+```
+
 ## 当前状态
 
-早期研究 / 架构设计阶段。欢迎讨论与贡献。
+代码框架完整，等待硬件就位后进入数据采集阶段。  
+当前阻塞点：FSR 触觉阵列的硬件采购与组装。

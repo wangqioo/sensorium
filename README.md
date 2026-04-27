@@ -1,109 +1,125 @@
 # Sensorium
 
-> *From raw sensor signals to emergent understanding — the complete sensory apparatus for embodied AI.*
+> *从原始传感器信号到涌现式理解——具身 AI 的完整感知系统。*
 
-Sensorium is a research architecture and implementation framework for building robots that perceive the world through **atomic sensory tokens** — discrete, self-supervised representations learned directly from raw sensor streams — which are then fed as a first-class vocabulary into a large language model.
+Sensorium 是一套研究架构与实现框架，目标是让机器人通过**原子感知 Token** 来理解世界。所谓原子感知 Token，是直接从原始传感器数据流中以自监督方式学习出来的离散表征，然后作为第一等词汇喂给大语言模型。
 
-The core idea: don't teach the LLM to understand "eye movement" or "stroking". Train the sensors to discover their own vocabulary. Then let the LLM learn what that vocabulary means.
-
----
-
-## The Two-Stage Philosophy
-
-```
-Stage 1: Raw sensors → Atomic tokens      (data-driven, unsupervised)
-Stage 2: Atomic tokens + text → LLM       (semantic emergence)
-```
-
-A dog turns its head at a sound before it "understands" the sound. Stage 1 is that reflex. Stage 2 is the thinking that follows.
+核心理念：不去教 LLM 什么叫"眼神飘移"或"被抚摸"。先让传感器自己发现词汇，再让 LLM 去学这些词汇的含义。
 
 ---
 
-## Architecture Overview
+## 两阶段哲学
+
+```
+第一阶段：原始传感器 → 原子 Token      （数据驱动，无监督）
+第二阶段：原子 Token + 文字 → LLM      （语义涌现）
+```
+
+小狗听到声音会先转头，再去"理解"那是什么声音。第一阶段就是那个转头的反射；第二阶段才是随后的思考。
+
+---
+
+## 系统架构总览
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        HARDWARE LAYER                        │
-│   Camera │ Mic Array │ IMU (6-DOF) │ FSR Pressure Array    │
+│                          硬件层                              │
+│      摄像头 │ 麦克风阵列 │ IMU（六轴）│ FSR 压力传感器阵列   │
 └────┬──────────┬───────────┬──────────────┬───────────────────┘
      │          │           │              │
 ┌────▼──────────▼───────────▼──────────────▼───────────────────┐
-│              LAYER 1: ATOMIC ENCODER LAYER                    │
-│  (Jetson Orin, TensorRT INT8, <10ms per modality)            │
+│                 第一层：原子编码层                             │
+│         （Jetson Orin，TensorRT INT8，每模态 <10ms）          │
 │                                                               │
-│  DINOv2-small       WavTokenizer    VQ-VAE-IMU  VQ-VAE-TAC  │
-│  + VQ-GAN head      (pretrained)    (self-train) (self-train)│
-│  10 VIS tokens/s    10 AUD tokens/s  2 IMU/s     5 TAC/s    │
+│  DINOv2-small      WavTokenizer    VQ-VAE-IMU  VQ-VAE-TAC   │
+│  + VQ-GAN 量化头   （直接使用）    （自训练）   （自训练）    │
+│  10 VIS token/秒   10 AUD token/秒  2 IMU/秒    5 TAC/秒     │
 └────┬──────────┬───────────┬──────────────┬───────────────────┘
      └──────────┴───────────┴──────────────┘
-                            │  atomic token stream
+                            │  原子 token 流
               ┌─────────────▼─────────────┐
-              │   LAYER 2: REFLEX ENGINE   │
-              │   rule engine, <50ms       │
-              │   atom pattern → action    │
+              │       第二层：反射引擎      │
+              │   规则引擎，延迟 <50ms     │
+              │   原子模式 → 立即动作      │
               └─────────────┬─────────────┘
-                            │  filtered token stream
+                            │  过滤后的 token 流
               ┌─────────────▼─────────────┐
-              │   LAYER 3: LLM REASONING  │
-              │   Qwen2.5-7B (INT4)       │
-              │   30s rolling context      │
-              │   ~300ms inference cycle   │
+              │      第三层：LLM 推理      │
+              │   Qwen2.5-7B（INT4 量化）  │
+              │   30 秒滚动上下文窗口       │
+              │   推理周期 ~300ms          │
               └─────────────┬─────────────┘
                             │
               ┌─────────────▼─────────────┐
-              │   LAYER 4: ACTION OUTPUT  │
-              │   voice / motion / state   │
+              │       第四层：动作输出      │
+              │   语音 / 运动 / 表情 / 状态 │
               └───────────────────────────┘
 ```
 
 ---
 
-## Four Sensor Modalities
+## 四个感知模态
 
-### Vision
-- **Encoder**: DINOv2-small (frozen) + VQ-GAN quantizer head
-- **Output**: 10 `VIS` tokens/sec, codebook size 1024
-- **Training**: VQ-GAN head fine-tuned on collected data, DINOv2 frozen
-- **Edge**: TensorRT INT8, ~8ms/frame on Jetson Orin
+### 视觉
+- **编码器**：DINOv2-small（冻结）+ VQ-GAN 量化头
+- **输出**：10 个 `VIS` token/秒，码本大小 1024
+- **训练**：只训练 VQ-GAN 头部，DINOv2 权重冻结不动
+- **边缘部署**：TensorRT INT8，Jetson Orin 上约 8ms/帧
 
-### Audio
-- **Encoder**: [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) (ICLR 2025)
-- **Output**: 10 `AUD` tokens/sec (downsampled from 40 tokens/sec)
-- **Training**: Use pretrained weights directly — no training needed
-- **Edge**: TensorRT FP16, streaming with 32ms latency
+### 听觉
+- **编码器**：[WavTokenizer](https://github.com/jishengpeng/WavTokenizer)（ICLR 2025）
+- **输出**：10 个 `AUD` token/秒（从 40 token/秒下采样）
+- **训练**：直接使用预训练权重，无需训练
+- **边缘部署**：TensorRT FP16，流式处理延迟 32ms
 
-### IMU (6-DOF Motion)
-- **Encoder**: 1D CNN + VQ quantizer, initialized from [ImageBind](https://github.com/facebookresearch/ImageBind) IMU encoder
-- **Output**: 2 `IMU` tokens/sec, codebook size 256
-- **Training**: VQ-VAE self-supervised on 0.5s windows, aligned with ImageBind embeddings
-- **Architecture reference**: [IMU-Video-MAE](https://github.com/mf-zhang/IMU-Video-MAE) (ECCV 2024)
+### IMU（六轴运动）
+- **编码器**：1D CNN + VQ 量化器，用 [ImageBind](https://github.com/facebookresearch/ImageBind) 的 IMU 编码器初始化
+- **输出**：2 个 `IMU` token/秒，码本大小 256
+- **训练**：在 0.5 秒滑动窗口上做 VQ-VAE 自监督，损失函数与 ImageBind 嵌入对齐
+- **架构参考**：[IMU-Video-MAE](https://github.com/mf-zhang/IMU-Video-MAE)（ECCV 2024）
 
-### Tactile (FSR Pressure Array)
-- **Hardware**: ~100 FSR sensors distributed over robot body, mapped to 16×8 virtual body grid
-- **Encoder**: Spatial Conv2D + Temporal Conv1D + VQ quantizer
-- **Output**: 5 `TAC` tokens/sec, codebook size 256
-- **Training**: Spatial-temporal VQ-VAE, trained from scratch with cross-modal alignment loss
-- **Key dimensions captured**: location (head/back/belly/side), pressure magnitude, coverage area, stroke velocity/direction, contact duration
+### 触觉（FSR 压力传感器阵列）
+- **硬件**：约 100 个 FSR 传感器分布于机器人身体，映射到 16×8 虚拟身体地图
+- **编码器**：空间 Conv2D + 时间 Conv1D + VQ 量化器
+- **输出**：5 个 `TAC` token/秒，码本大小 256
+- **训练**：时空 VQ-VAE 从零自训练，加跨模态对齐损失
+- **捕捉维度**：接触位置（头/背/腹/侧面）、压力大小、接触面积、抚摸速度/方向、持续时长
+
+传感器分区示意：
+
+```
+     ┌──────────────────┐
+     │   头部（4×2）     │  →  8 个感应点
+     ├──────────────────┤
+     │   背部（8×4）     │  →  32 个感应点
+     ├──────────────────┤
+     │   腹部（4×4）     │  →  16 个感应点
+     ├────────┬─────────┤
+     │ 左侧   │  右侧   │  →  各 8 个感应点
+     │（2×4） │ （2×4） │
+     └────────┴─────────┘
+```
 
 ---
 
-## Token Vocabulary Design
+## Token 词汇表设计
 
 ```
-Original LLM vocabulary:  ~151,936 tokens  (Qwen2.5-7B)
+原始 LLM 词汇量：  ~151,936 个 token（Qwen2.5-7B）
 
-Added sensory tokens:
-  [VIS_0000] ~ [VIS_1023]   → 1024 visual atom tokens
-  [AUD_0000] ~ [AUD_1023]   → 1024 audio atom tokens
-  [IMU_000]  ~ [IMU_255]    →  256 motion atom tokens
-  [TAC_000]  ~ [TAC_255]    →  256 tactile atom tokens
-  Special:   [SENSOR_START] [VIS_START] [AUD_START]
-             [IMU_START] [TAC_START] [SENSOR_END]
+新增感官 token：
+  [VIS_0000] ~ [VIS_1023]   →  1024 个视觉原子 token
+  [AUD_0000] ~ [AUD_1023]   →  1024 个听觉原子 token
+  [IMU_000]  ~ [IMU_255]    →   256 个运动原子 token
+  [TAC_000]  ~ [TAC_255]    →   256 个触觉原子 token
+  特殊 token：[SENSOR_START] [VIS_START] [AUD_START]
+              [IMU_START] [TAC_START] [SENSOR_END]
 
-Total: ~154,566 tokens
+总词汇量：~154,566 个
+新 token 占比：~1.7%，对原模型影响极小
 ```
 
-The LLM sees interleaved streams of sensory and text tokens:
+LLM 看到的输入是感官 token 与文字 token 的交织流：
 
 ```
 [SENSOR_START]
@@ -116,147 +132,148 @@ The LLM sees interleaved streams of sensory and text tokens:
 ...
 ```
 
-It never learns what `TAC_087` "is." It learns what it *predicts*.
+LLM 永远不需要被告知 `TAC_087` 是什么。它只需要学会 `TAC_087` 能*预测*什么。
 
 ---
 
-## Three-Stage Training Pipeline
+## 三阶段训练流程
 
-### Stage 1 — Atomic Encoder Training (unsupervised)
+### 第一阶段——原子编码器训练（无监督）
 
-Each modality encoder trained independently on raw sensor data. No labels.
+各模态编码器独立训练，只吃原始传感器数据，不需要任何标注。
 
-| Modality | Loss functions | Duration |
+| 模态 | 损失函数 | 预估训练时长 |
 |---|---|---|
-| Vision | Reconstruction + temporal prediction | ~3 days GPU |
-| Audio | Pretrained (WavTokenizer) | 0 |
-| IMU | Reconstruction + prediction + ImageBind alignment | ~1 day |
-| Tactile | Reconstruction + spatial continuity + temporal prediction | ~2 days |
+| 视觉 | 重建损失 + 时序预测损失 | ~3 天（GPU） |
+| 听觉 | 直接使用预训练权重 | 0 |
+| IMU | 重建 + 预测 + ImageBind 对齐 | ~1 天 |
+| 触觉 | 重建 + 空间连续性 + 时序预测 | ~2 天 |
 
-**Anti-codebook-collapse**: EMA updates + commitment loss + periodic codebook reset for low-usage entries.
+**防止码本崩塌**：EMA 更新 + commitment loss + 低频条目周期性重置。
 
-### Stage 2 — Cross-modal Alignment (ImageBind as anchor)
+### 第二阶段——跨模态对齐（以 ImageBind 为锚点）
 
-Use [ImageBind](https://github.com/facebookresearch/ImageBind) as a free semantic anchor. ImageBind already aligns vision, audio, and IMU into a shared space. We align our atom embeddings to it:
+用 [ImageBind](https://github.com/facebookresearch/ImageBind) 作为免费的语义锚——它已经把视觉、听觉、IMU 对齐到同一语义空间。我们的原子嵌入向它看齐：
 
+```python
+L_align = MSE(我们的视觉原子嵌入, ImageBind.encode_image(对应帧))
+        + MSE(我们的听觉原子嵌入, ImageBind.encode_audio(对应音频))
+        + MSE(我们的IMU原子嵌入,  ImageBind.encode_imu(对应窗口))
 ```
-L_align = MSE(our_vis_atom_emb, ImageBind.encode_image(frame))
-        + MSE(our_aud_atom_emb, ImageBind.encode_audio(clip))
-        + MSE(our_imu_atom_emb, ImageBind.encode_imu(window))
-```
 
-Tactile uses cross-modal contrastive loss (co-occurring TAC and VIS/AUD atoms should be close).
+触觉没有 ImageBind 支持，改用跨模态对比损失：同一事件的 TAC 原子与对应的 VIS/AUD 原子在嵌入空间里拉近。
 
-### Stage 3 — LLM Multimodal Fine-tuning
+### 第三阶段——LLM 多模态微调
 
-Two sub-stages following [LLaVA](https://github.com/haotian-liu/LLaVA) protocol, tooled with [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory):
+参考 [LLaVA](https://github.com/haotian-liu/LLaVA) 的两步协议，工具链使用 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory)：
 
-**Stage 3A** — Embedding alignment (LLM frozen, only new token embeddings trained)  
-**Stage 3B** — LoRA full fine-tuning (rank=64, alpha=128) on multimodal interleaved sequences
+**第 3A 步**：嵌入对齐（冻结 LLM 主体，只训练新 token 的 embedding 层）
+
+**第 3B 步**：LoRA 全量微调（rank=64，alpha=128），在多模态交织序列上训练
 
 ---
 
-## Reflex Engine
+## 反射引擎
 
-Fast path. No LLM. Pure rule lookup on the atom stream.
+快速通路，完全不过 LLM，纯原子 token 规则查表。
 
 ```python
 reflex_rules = {
-    "AUD_SUDDEN_LOUD":    (turn_head_to_sound,   priority=10),
-    "TAC_HEAD_STROKE":    (enter_calm_mode,       priority=5),
-    "TAC_SUDDEN_IMPACT":  (flinch_and_alert,      priority=9),
-    "TAC_PAT_RHYTHM":     (wag_response,          priority=4),
-    "IMU_FALL_DETECT":    (emergency_stop,         priority=10),
+    "AUD_SUDDEN_LOUD":    (转头朝向声源,     priority=10),
+    "TAC_HEAD_STROKE":    (进入平静模式,      priority=5),
+    "TAC_SUDDEN_IMPACT":  (缩避并发出警报,    priority=9),
+    "TAC_PAT_RHYTHM":     (同频摆动响应,      priority=4),
+    "IMU_FALL_DETECT":    (紧急停止,          priority=10),
 }
 ```
 
-Atom IDs are filled in after Stage 1 training by inspecting the codebook. The reflex layer fires in <50ms — comparable to animal reflex arcs.
+各规则里的原子 ID，是第一阶段训练完成后，人工检查码本、找到对应模式的条目编号后填入的。只做一次，之后规则引擎的延迟 <50ms——与动物的脊髓反射弧相当。
 
 ---
 
-## Edge Deployment (Jetson Orin)
+## 边缘部署（Jetson Orin）
 
 ```
-PyTorch → ONNX → TensorRT INT8 engine → ONNX Runtime (TensorRT backend)
+PyTorch → ONNX → TensorRT INT8 引擎 → ONNX Runtime（TensorRT 后端）
 ```
 
-| Model | Precision | Latency (Jetson Orin) |
+| 模型 | 精度 | Jetson Orin 延迟 |
 |---|---|---|
-| DINOv2-small + VQ-GAN | INT8 | ~10ms/frame |
-| WavTokenizer | FP16 | ~5ms/chunk |
-| VQ-VAE-IMU | INT8 | ~1ms/window |
-| VQ-VAE-TAC | INT8 | ~2ms/window |
-| Reflex Engine | — | <1ms |
-| Qwen2.5-7B (INT4, llama.cpp) | INT4 | ~300ms/call |
+| DINOv2-small + VQ-GAN | INT8 | ~10ms/帧 |
+| WavTokenizer | FP16 | ~5ms/块 |
+| VQ-VAE-IMU | INT8 | ~1ms/窗口 |
+| VQ-VAE-TAC | INT8 | ~2ms/窗口 |
+| 反射引擎 | — | <1ms |
+| Qwen2.5-7B（INT4，llama.cpp） | INT4 | ~300ms/次 |
 
-Layer 1 + 2 complete in <20ms. Layer 3 runs asynchronously on a 300ms cycle.
+第一层 + 第二层合计 <20ms 完成；第三层异步运行，300ms 为一个推理周期。
 
 ---
 
-## Implementation Roadmap
+## 实施路线图
 
-| Phase | Duration | Deliverable |
+| 阶段 | 周期 | 交付物 |
 |---|---|---|
-| **0** Data infrastructure | 2 weeks | ROS2 sensor nodes, FSR array bridge, synchronized recording |
-| **1** Atomic encoder training | 3 weeks | VQ models for all 4 modalities, codebook quality validated |
-| **2** Cross-modal alignment | 2 weeks | ImageBind-anchored atom embeddings, tactile contrastive alignment |
-| **3** LLM fine-tuning | 4 weeks | Qwen2.5-7B with sensory token vocabulary, scene understanding eval |
-| **4** Edge deployment | 3 weeks | TensorRT INT8, llama.cpp INT4, end-to-end latency validated |
+| **Phase 0** 数据采集基础设施 | 2 周 | ROS2 传感器节点、FSR 阵列串口桥接、多路时间戳同步录制 |
+| **Phase 1** 原子编码器训练 | 3 周 | 四模态 VQ 模型、码本质量评估通过 |
+| **Phase 2** 跨模态对齐 | 2 周 | ImageBind 锚点对齐完成、触觉对比对齐完成 |
+| **Phase 3** LLM 多模态微调 | 4 周 | Qwen2.5-7B 扩展感官词汇、场景理解评估 |
+| **Phase 4** 边缘部署与反射层 | 3 周 | TensorRT INT8 全部就绪、端到端延迟验证、实机测试 |
 
 ---
 
-## Key Open Source Dependencies
+## 核心开源依赖
 
-| Component | Repository | Notes |
+| 组件 | 仓库 | 说明 |
 |---|---|---|
-| Visual backbone | [DINOv2](https://github.com/facebookresearch/dinov2) | Frozen encoder |
-| Visual quantizer | [VQGAN-pytorch](https://github.com/dome272/VQGAN-pytorch) | Head only trained |
-| Audio tokenizer | [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) | Used as-is |
-| Cross-modal anchor | [ImageBind](https://github.com/facebookresearch/ImageBind) | Alignment signal |
-| Tactile reference | [Sparsh](https://github.com/facebookresearch/sparsh) | Architecture reference |
-| IMU reference | [IMU-Video-MAE](https://github.com/mf-zhang/IMU-Video-MAE) | Architecture reference |
-| LLM fine-tuning | [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) | LoRA training |
-| LLM inference | [llama.cpp](https://github.com/ggerganov/llama.cpp) | INT4 edge inference |
-| Robot middleware | ROS 2 + Isaac ROS | Sensor integration |
+| 视觉骨干 | [DINOv2](https://github.com/facebookresearch/dinov2) | 冻结使用 |
+| 视觉量化 | [VQGAN-pytorch](https://github.com/dome272/VQGAN-pytorch) | 只训练头部 |
+| 听觉 Token 化 | [WavTokenizer](https://github.com/jishengpeng/WavTokenizer) | 直接使用 |
+| 跨模态锚点 | [ImageBind](https://github.com/facebookresearch/ImageBind) | 对齐信号 |
+| 触觉架构参考 | [Sparsh](https://github.com/facebookresearch/sparsh) | Meta，ICLR 2025 |
+| IMU 架构参考 | [IMU-Video-MAE](https://github.com/mf-zhang/IMU-Video-MAE) | ECCV 2024 |
+| LLM 微调 | [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) | LoRA 训练 |
+| LLM 推理 | [llama.cpp](https://github.com/ggerganov/llama.cpp) | INT4 边缘推理 |
+| 机器人中间件 | ROS 2 + Isaac ROS | 传感器集成 |
 
 ---
 
-## Repository Structure (Planned)
+## 仓库结构（规划中）
 
 ```
 sensorium/
-├── docs/                    # Architecture docs and papers
-├── hardware/                # FSR array schematics, CAD, wiring guides
+├── docs/                    # 架构文档与论文笔记
+├── hardware/                # FSR 阵列原理图、CAD、接线指南
 │   └── tactile_array/
-├── data/                    # Data collection and preprocessing
-│   ├── collector/           # ROS2 sensor nodes
-│   └── preprocessor/        # Sync, format conversion
-├── encoders/                # Stage 1: atomic encoder models
+├── data/                    # 数据采集与预处理
+│   ├── collector/           # ROS2 传感器节点
+│   └── preprocessor/        # 时间同步、格式转换
+├── encoders/                # 第一阶段：原子编码器模型
 │   ├── visual/              # DINOv2 + VQ-GAN
-│   ├── audio/               # WavTokenizer wrapper
-│   ├── imu/                 # VQ-VAE for 6-DOF IMU
-│   └── tactile/             # Spatial-temporal VQ-VAE
-├── alignment/               # Stage 2: cross-modal alignment
+│   ├── audio/               # WavTokenizer 封装
+│   ├── imu/                 # 六轴 IMU VQ-VAE
+│   └── tactile/             # 时空 VQ-VAE
+├── alignment/               # 第二阶段：跨模态对齐
 │   └── imagebind_anchor/
-├── llm/                     # Stage 3: multimodal LLM
-│   ├── tokenizer_extension/ # Vocabulary expansion
-│   ├── training/            # LLaMA-Factory configs
-│   └── inference/           # llama.cpp integration
-├── reflex/                  # Layer 2: reflex engine
-└── deploy/                  # Edge deployment (TensorRT, ONNX)
+├── llm/                     # 第三阶段：多模态 LLM
+│   ├── tokenizer_extension/ # 词汇表扩展
+│   ├── training/            # LLaMA-Factory 配置
+│   └── inference/           # llama.cpp 集成
+├── reflex/                  # 第二层：反射引擎
+└── deploy/                  # 边缘部署（TensorRT、ONNX）
     └── jetson/
 ```
 
 ---
 
-## The Naming
+## 关于命名
 
-*Sensorium* (Latin) — in neuroscience, the totality of an organism's sensory experience: all sensory inputs, the brain structures that process them, and the unified perceptual world they construct.
+**Sensorium**（拉丁语）——神经科学术语，指生物体感知世界的全部感官系统的总和：所有感官输入、处理它们的大脑结构，以及它们共同构建出的统一感知世界。
 
-That's exactly what this is.
+这正是这个项目想做的事。
 
 ---
 
-## Status
+## 当前状态
 
-Early research / architecture phase. Contributions and discussion welcome.
+早期研究 / 架构设计阶段。欢迎讨论与贡献。

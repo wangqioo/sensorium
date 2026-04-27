@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Model weights
+*.pt
+*.pth
+*.gguf
+*.onnx
+*.engine
+*.bin
+*.safetensors
+
+# Data
+data/raw/
+data/recordings/
+*.bag
+*.mcap
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+logs/
+runs/
+wandb/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.key
